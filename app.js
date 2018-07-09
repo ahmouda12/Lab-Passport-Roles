@@ -8,6 +8,9 @@ const hbs          = require('hbs');
 const mongoose     = require('mongoose');
 const logger       = require('morgan');
 const path         = require('path');
+const GitHub       = require('github-api');
+const session      = require('express-session');
+const MongoStore   = require('connect-mongo')(session);
 
 
 mongoose.Promise = Promise;
@@ -29,6 +32,16 @@ app.use(logger('dev'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cookieParser());
+app.use(session({
+  secret: 'never do your own laundry again',
+  resave: true,
+  saveUninitialized: true,
+  cookie: { maxAge: 60000000 },
+  store: new MongoStore({
+    mongooseConnection: mongoose.connection,
+    ttl: 24 * 60 * 60 // 1 day
+  })
+}));
 
 // Express View engine setup
 
@@ -49,10 +62,30 @@ app.use(favicon(path.join(__dirname, 'public', 'images', 'favicon.ico')));
 // default value for title local
 app.locals.title = 'Express - Generated with IronGenerator';
 
+// Passport Middleware configuration
+const passport = require('./routes/auth');
+app.use(passport.initialize());
+app.use(passport.session());
 
+app.get('/auth/github',
+  passport.authenticate('github', { scope: [ 'user:email' ] }));
+
+app.get('/auth/github/callback',
+  passport.authenticate('github', { failureRedirect: '/' }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    setTimeout(()=>res.redirect('/repositories'), 1000);
+  });
+
+app.get('/logout', function(req, res){
+  req.logout();
+  res.redirect('/');
+});
 
 const index = require('./routes/index');
+const repositories = require('./routes/repositories');
 app.use('/', index);
+app.use('/repositories', repositories);
 
 
 module.exports = app;
